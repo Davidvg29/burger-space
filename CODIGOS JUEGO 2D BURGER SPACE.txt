@@ -1,0 +1,179 @@
+ESCENA DE PLAYER:
+extends Area2D
+
+export (int) var Velocidad = 400
+var Movimiento = Vector2()
+var limite
+signal golpe
+
+func _ready():
+	hide() #ocultar player
+	limite = get_viewport_rect().size
+	
+	
+func _process(delta):
+	Movimiento = Vector2() #reiniciar el valor
+	
+	if Input.is_action_pressed("ui_right"): #derecha
+		Movimiento.x += 1
+	if Input.is_action_pressed("ui_left"): #izquierda
+		Movimiento.x -= 1 
+	if Input.is_action_pressed("ui_down"): #abajo
+		Movimiento.y += 1
+	if Input.is_action_pressed("ui_up"): #arriba
+		Movimiento.y -= 1
+	
+	if Movimiento.length() > 0:
+		Movimiento = Movimiento.normalized() * Velocidad
+		
+	position += Movimiento * delta #actualizar los movimientos
+	position.x = clamp(position.x, 0, limite.x)
+	position.y = clamp(position.y, 0, limite.y)
+	
+	
+	if Movimiento.x != 0:
+		$Sprite_player.animation = "lado"
+		$Sprite_player.flip_h = Movimiento.x < 0
+		$Sprite_player.flip_v = false
+	elif Movimiento.y != 0:
+		$Sprite_player.animation = "espalda"
+		$Sprite_player.flip_v = Movimiento.y > 0
+	else:
+		$Sprite_player.animation = "frente"
+		
+func _on_Player_body_entered(body): #cuando haya colision
+	hide()
+	emit_signal("golpe")
+	$CollisionShape2D.disabled = true
+	
+func inicio(pos):
+	position = pos
+	show() #mostrar personaje o player
+	$CollisionShape2D.disabled = false;
+
+
+
+
+ESCENA DE ENEMIGO:
+
+extends RigidBody2D
+
+export (int) var velocidad_min
+export (int)  var velocidad_max
+var tipo_roca =["grande", "chiquito"]
+
+
+func _ready():
+	$AnimatedSprite.animation = tipo_roca[randi() % tipo_roca.size()]
+
+	if $AnimatedSprite.animation == "grande":
+		$CollisionShape2D.scale.x = 1.5
+		$CollisionShape2D.scale.y = 1.5
+
+
+func _on_Visibilidad_screen_exited():
+	queue_free() #eliminar enemigo
+
+
+
+
+
+
+
+
+
+
+
+
+ESCENA DE MUNDO:
+
+
+extends Node
+export(PackedScene) var Roca
+var Score
+
+func _ready():
+	randomize()
+	
+func nuevo_juego():
+	Score = 0
+	$Player.inicio($PosicionDeInicio.position) # posicion de iicio player
+	$InicioTimer.start()
+	$Interfaz.mostrar_mensaje("Listo")
+	$Interfaz.update_score(Score)
+	$Musica.play()
+
+func game_over():
+	$ScoreTimer.stop()
+	$RocaTimer.stop()
+	$Interfaz.game_over()
+	$AudioMuerte.play()
+	$Musica.stop()
+
+
+func _on_InicioTimer_timeout():
+	$RocaTimer.start()
+	$ScoreTimer.start()
+
+
+func _on_ScoreTimer_timeout():
+	Score += 1
+	$Interfaz.update_score(Score)
+	
+
+func _on_RocaTimer_timeout():
+	#seleccioar un lugar aleatorio en camino
+	$Camino/RocaPosicion.set_offset(randi())
+	
+	var R = Roca.instance()
+	add_child(R)
+	
+	#selecionar direccion
+	var d = $Camino/RocaPosicion.rotation + PI /2
+	
+	R.position = $Camino/RocaPosicion.position
+	
+	d += rand_range(PI /4, PI /4)
+	R.rotation = d
+	R.set_linear_velocity(Vector2(rand_range(R.velocidad_min, R.velocidad_max), 0).rotated(d))
+
+
+
+
+
+
+
+
+
+
+
+
+ESCENA DE INTERFAS:
+
+
+extends CanvasLayer
+
+signal iniciar_juego
+
+func mostrar_mensaje(texto):
+	$Mensaje.text = texto
+	$Mensaje.show()
+	$MensajeTimer.start()
+	
+func game_over():
+	mostrar_mensaje("Game Over")
+	yield($MensajeTimer, "timeout")
+	$BotonPlay.show()
+	$Mensaje.text = "Burguer Space"
+	$Mensaje.show()
+	
+func update_score(Puntos):
+	$ScoreLabel.text = str(Puntos)
+
+func _on_MensajeTimer_timeout():
+	$Mensaje.hide()
+
+
+func _on_BotonPlay_pressed():
+	$BotonPlay.hide()
+	emit_signal("iniciar_juego")
